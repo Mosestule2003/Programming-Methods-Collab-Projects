@@ -97,8 +97,8 @@ A `|` typed by the user is saved as `/` so each record always stays on one line.
 
 ## Team
 
-- [Name 1]
-- [Name 2]
+- [Kpughur-Tule Tertsegha Moses]
+- [Sumaiya Shova]
 - [Name 3]
 
 COMP 2210 - Programming Methods, Thompson Rivers University
