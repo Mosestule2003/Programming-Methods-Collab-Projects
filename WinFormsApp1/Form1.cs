@@ -4,15 +4,18 @@ using System.Text;
 
 namespace WinFormsApp1
 {
-    // Case Report Form: the form collects the data and Python (case_manager.py) stores it
+    // Case Report Form.
+    // The form collects the data, Python (case_bridge.py and case_manager.py) saves it in the text file,
+    // and Database.cs copies it into the MySQL database ed5.
     public partial class Form1 : Form
     {
         // path of the Python script, list of records, form controls, field names, id being edited
-        string scriptPath = Path.Combine(AppContext.BaseDirectory, "case_manager.py");
+        string scriptPath = Path.Combine(AppContext.BaseDirectory, "case_bridge.py");
         List<string> records = new List<string>();
         Control[] boxes = new Control[0];
         string[] labels = new string[0];
         string editingId = "";
+        bool pythonWorked = true;
 
         public Form1()
         {
@@ -22,6 +25,9 @@ namespace WinFormsApp1
         // Runs when the window opens
         private void Form1_Load(object sender, EventArgs e)
         {
+            // the university logo is a picture file next to the program
+            picLogo.ImageLocation = Path.Combine(AppContext.BaseDirectory, "university_logo.png");
+
             // the order here is the column order in the text file
             boxes = new Control[]
             {
@@ -53,7 +59,8 @@ namespace WinFormsApp1
             ShowRecords(records);
         }
 
-        // Button clicks
+        // ---------- Button clicks ----------
+
         private void btnSave_Click(object sender, EventArgs e)
         {
             SaveRecord();
@@ -96,12 +103,12 @@ namespace WinFormsApp1
             }
         }
 
-        // Grid events
         private void dgvRecords_SelectionChanged(object sender, EventArgs e)
         {
             ShowDetails();
         }
 
+        // Double-clicking a record opens it for editing
         private void dgvRecords_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex >= 0)
@@ -110,114 +117,188 @@ namespace WinFormsApp1
             }
         }
 
-        // Add a new record or update the one being edited
+        // ---------- Save, search, modify, delete ----------
+
+        // Add a new record, or update the one being edited
         private void SaveRecord()
         {
-            if (!ValidateForm())
+            if (ValidateForm() == false)
             {
                 return;
             }
 
+            // 1. save in the text file (Python)
             string values = BuildValues();
-            string result;
+            string id = "";
             if (editingId == "")
             {
-                result = RunPython(new string[] { "add" }, values);
+                id = RunPython("add", values).Trim();
             }
             else
             {
-                result = RunPython(new string[] { "update", editingId }, values);
+                id = RunPython("update " + editingId, values).Trim();
             }
-            if (result == null)
+            if (pythonWorked == false)
             {
                 return;
             }
 
-            string id = result.Trim();
-            lblStatus.Text = (editingId == "" ? "Saved new record " : "Updated record ") + id + ".";
-            MessageBox.Show("Record " + id + (editingId == "" ? " was saved." : " was updated."),
-                editingId == "" ? "Saved" : "Updated", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // 2. save in the database
+            string dbError = Database.SaveRecord(id + "|" + values);
+            if (dbError == "")
+            {
+                MessageBox.Show("Record " + id + " was saved (text file and database).", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Record " + id + " was saved in the text file, but NOT in the database:\n\n" + dbError,
+                    "Database problem", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
 
+            lblStatus.Text = "Saved record " + id + ".";
             LoadRecords();
             ClearForm();
             ShowRecords(records);
         }
 
-        // Join all the form values into one "|" separated line
-        private string BuildValues()
+        // Show the records that match the search text
+        private void SearchRecords()
         {
-            string line = "";
+            string output = RunPython("search " + cmbSearchBy.SelectedIndex + " \"" + txtSearch.Text.Trim().Replace("\"", "") + "\"", "");
+            if (pythonWorked == false)
+            {
+                return;
+            }
+
+            List<string> found = ToRecords(output);
+            ShowRecords(found);
+            if (found.Count == 0)
+            {
+                MessageBox.Show("No records match your search.", "Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        // Copy the selected record back into the form so it can be edited
+        private void ModifyRecord()
+        {
+            string line = GetSelectedLine();
+            if (line == "")
+            {
+                MessageBox.Show("Select a record in the list first.", "Modify", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string[] parts = line.Split('|');
             for (int i = 0; i < boxes.Length; i++)
             {
-                if (i > 0)
+                string value = "";
+                if (i + 1 < parts.Length)
                 {
-                    line = line + "|";
+                    value = parts[i + 1];
                 }
-                // "|" would break the format and line breaks would split the record
-                line = line + GetValue(boxes[i]).Replace("|", "/").Replace("\r\n", "<br>").Replace("\n", "<br>");
+                SetValue(boxes[i], value.Replace("<br>", Environment.NewLine));
             }
-            return line;
+
+            editingId = parts[0];
+            btnSave.Text = "Update Record";
+            lblMode.Text = "Editing " + editingId;
+            pnlForm.AutoScrollPosition = new Point(0, 0);
         }
 
-        // Run case_manager.py with the given arguments and return what it prints (null on error)
-        private string RunPython(string[] arguments, string input)
+        // Delete the selected record after asking
+        private void DeleteRecord()
         {
-            // try "python" first, then "py"
-            string[] programs = { "python", "py" };
-            string problem = "";
-
-            foreach (string program in programs)
+            string line = GetSelectedLine();
+            if (line == "")
             {
-                ProcessStartInfo info = new ProcessStartInfo(program);
-                info.ArgumentList.Add(scriptPath);
-                foreach (string argument in arguments)
-                {
-                    info.ArgumentList.Add(argument);
-                }
-                info.RedirectStandardInput = true;
-                info.RedirectStandardOutput = true;
-                info.RedirectStandardError = true;
-                info.StandardInputEncoding = new UTF8Encoding(false);
-                info.StandardOutputEncoding = Encoding.UTF8;
-                info.StandardErrorEncoding = Encoding.UTF8;
-                info.UseShellExecute = false;
-                info.CreateNoWindow = true;
-
-                try
-                {
-                    using (Process process = Process.Start(info)!)
-                    {
-                        process.StandardInput.Write(input);
-                        process.StandardInput.Close();
-                        string output = process.StandardOutput.ReadToEnd();
-                        string error = process.StandardError.ReadToEnd();
-                        process.WaitForExit();
-
-                        if (process.ExitCode == 0)
-                        {
-                            return output;
-                        }
-                        problem = error.Trim();
-                        if (!error.Contains("Python was not found"))
-                        {
-                            break;
-                        }
-                    }
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-                }
+                MessageBox.Show("Select a record in the list first.", "Delete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
             }
 
-            if (problem == "")
+            string[] parts = line.Split('|');
+            DialogResult answer = MessageBox.Show("Delete record " + parts[0] + " (" + parts[1] + ")? This cannot be undone.",
+                "Confirm delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes)
             {
-                problem = "Python was not found. Install Python 3 and make sure the 'python' command works.";
+                return;
             }
-            MessageBox.Show(problem, "Python error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return null!;
+
+            // 1. delete from the text file (Python)
+            RunPython("delete " + parts[0], "");
+            if (pythonWorked == false)
+            {
+                return;
+            }
+
+            // 2. delete from the database
+            string dbError = Database.DeleteRecord(parts[0]);
+            if (dbError == "")
+            {
+                MessageBox.Show("Record " + parts[0] + " was deleted (text file and database).", "Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Record " + parts[0] + " was deleted from the text file, but NOT from the database:\n\n" + dbError,
+                    "Database problem", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            if (editingId == parts[0])
+            {
+                ClearForm();
+            }
+            lblStatus.Text = "Deleted record " + parts[0] + ".";
+            LoadRecords();
+            ShowRecords(records);
         }
 
-        // Split Python output into records, one per line
+        // ---------- Python ----------
+
+        // Run case_bridge.py with a command like "add" or "delete CR-1".
+        // "input" is sent to Python as text. Returns what Python prints.
+        // If something goes wrong a message is shown and pythonWorked becomes false.
+        private string RunPython(string command, string input)
+        {
+            ProcessStartInfo info = new ProcessStartInfo("cmd.exe");
+            info.Arguments = "/c py \"" + scriptPath + "\" " + command;
+            info.WorkingDirectory = AppContext.BaseDirectory;
+            info.RedirectStandardInput = true;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+            info.StandardInputEncoding = new UTF8Encoding(false);
+            info.StandardOutputEncoding = Encoding.UTF8;
+            info.StandardErrorEncoding = Encoding.UTF8;
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+
+            Process process = new Process();
+            process.StartInfo = info;
+            process.Start();
+            process.StandardInput.Write(input);
+            process.StandardInput.Close();
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            pythonWorked = (process.ExitCode == 0);
+            if (pythonWorked == false)
+            {
+                if (error.Contains("not recognized"))
+                {
+                    error = "Python was not found. Install Python 3 and make sure the 'py' command works.";
+                }
+                MessageBox.Show(error.Trim(), "Python error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            return output;
+        }
+
+        // Get all records from Python
+        private void LoadRecords()
+        {
+            string output = RunPython("list", "");
+            records = ToRecords(output);
+        }
+
+        // Split the text printed by Python into one record per line
         private List<string> ToRecords(string output)
         {
             List<string> list = new List<string>();
@@ -231,29 +312,7 @@ namespace WinFormsApp1
             return list;
         }
 
-        // Get all records from Python
-        private void LoadRecords()
-        {
-            string output = RunPython(new string[] { "list" }, "");
-            records = output == null ? new List<string>() : ToRecords(output);
-        }
-
-        // Search records by the chosen column
-        private void SearchRecords()
-        {
-            string output = RunPython(new string[] { "search", cmbSearchBy.Text, txtSearch.Text.Trim() }, "");
-            if (output == null)
-            {
-                return;
-            }
-            List<string> found = ToRecords(output);
-
-            ShowRecords(found);
-            if (found.Count == 0)
-            {
-                MessageBox.Show("No records match your search.", "Search", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
+        // ---------- Showing records ----------
 
         // Show a list of records in the grid
         private void ShowRecords(List<string> list)
@@ -268,7 +327,7 @@ namespace WinFormsApp1
             lblStatus.Text = list.Count + " record(s) shown.";
         }
 
-        // Show all fields of the selected record
+        // Show every filled-in field of the selected record
         private void ShowDetails()
         {
             string line = GetSelectedLine();
@@ -290,7 +349,7 @@ namespace WinFormsApp1
             txtDetails.Text = text;
         }
 
-        // Return the selected record line ("" if none)
+        // Return the selected record line ("" if nothing is selected)
         private string GetSelectedLine()
         {
             if (dgvRecords.SelectedRows.Count == 0)
@@ -308,60 +367,23 @@ namespace WinFormsApp1
             return "";
         }
 
-        // Copy the selected record back into the form for editing
-        private void ModifyRecord()
-        {
-            string line = GetSelectedLine();
-            if (line == "")
-            {
-                MessageBox.Show("Select a record in the list first.", "Modify", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+        // ---------- Form values ----------
 
-            string[] parts = line.Split('|');
+        // Join all the form values into one "|" separated line
+        private string BuildValues()
+        {
+            string line = "";
             for (int i = 0; i < boxes.Length; i++)
             {
-                string value = i + 1 < parts.Length ? parts[i + 1] : "";
-                SetValue(boxes[i], value.Replace("<br>", Environment.NewLine));
+                if (i > 0)
+                {
+                    line = line + "|";
+                }
+                string value = GetValue(boxes[i]);
+                value = value.Replace("|", "/").Replace("\r\n", "<br>").Replace("\n", "<br>");
+                line = line + value;
             }
-
-            editingId = parts[0];
-            btnSave.Text = "Update Record";
-            lblMode.Text = "Editing " + editingId;
-            pnlForm.AutoScrollPosition = new Point(0, 0);
-        }
-
-        // Delete the selected record after confirming
-        private void DeleteRecord()
-        {
-            string line = GetSelectedLine();
-            if (line == "")
-            {
-                MessageBox.Show("Select a record in the list first.", "Delete", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            string[] parts = line.Split('|');
-            DialogResult result = MessageBox.Show("Delete record " + parts[0] + " (" + parts[1] + ")? This cannot be undone.",
-                "Confirm delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (result != DialogResult.Yes)
-            {
-                return;
-            }
-
-            if (RunPython(new string[] { "delete", parts[0] }, "") == null)
-            {
-                return;
-            }
-            LoadRecords();
-
-            if (editingId == parts[0])
-            {
-                ClearForm();
-            }
-            ShowRecords(records);
-            lblStatus.Text = "Deleted record " + parts[0] + ".";
-            MessageBox.Show("Record " + parts[0] + " was deleted.", "Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return line;
         }
 
         // Reset the form to a new empty record
@@ -377,18 +399,44 @@ namespace WinFormsApp1
             pnlForm.AutoScrollPosition = new Point(0, 0);
         }
 
+        // Each "Yes" radio button has a "No" button next to it
+        private RadioButton GetNoButton(RadioButton yesButton)
+        {
+            if (yesButton == rdoReviewedYes)
+            {
+                return rdoReviewedNo;
+            }
+            if (yesButton == rdoChairYes)
+            {
+                return rdoChairNo;
+            }
+            return rdoDeanNo;
+        }
+
         // Read a control as text
         private string GetValue(Control box)
         {
             if (box is CheckBox)
             {
-                return ((CheckBox)box).Checked ? "Yes" : "No";
+                CheckBox checkBox = (CheckBox)box;
+                if (checkBox.Checked)
+                {
+                    return "Yes";
+                }
+                return "No";
             }
             if (box is RadioButton)
             {
-                RadioButton noButton = (RadioButton)box.Parent!.Controls[box.Name.Replace("Yes", "No")]!;
-                if (((RadioButton)box).Checked) return "Yes";
-                if (noButton.Checked) return "No";
+                RadioButton yesButton = (RadioButton)box;
+                RadioButton noButton = GetNoButton(yesButton);
+                if (yesButton.Checked)
+                {
+                    return "Yes";
+                }
+                if (noButton.Checked)
+                {
+                    return "No";
+                }
                 return "";
             }
             return box.Text.Trim();
@@ -399,12 +447,14 @@ namespace WinFormsApp1
         {
             if (box is CheckBox)
             {
-                ((CheckBox)box).Checked = (value == "Yes");
+                CheckBox checkBox = (CheckBox)box;
+                checkBox.Checked = (value == "Yes");
             }
             else if (box is RadioButton)
             {
-                RadioButton noButton = (RadioButton)box.Parent!.Controls[box.Name.Replace("Yes", "No")]!;
-                ((RadioButton)box).Checked = (value == "Yes");
+                RadioButton yesButton = (RadioButton)box;
+                RadioButton noButton = GetNoButton(yesButton);
+                yesButton.Checked = (value == "Yes");
                 noButton.Checked = (value == "No");
             }
             else
@@ -413,13 +463,20 @@ namespace WinFormsApp1
             }
         }
 
-        // Check required fields, dates, emails and Yes/No explanations
+        // ---------- Checking the form ----------
+
+        // Returns true if everything is filled in correctly
         private bool ValidateForm()
         {
             Control[] required = { txtStudentName, txtStudentNumber, txtStudentEmail, txtFacultyName, txtCaseDate,
                                    txtCourse, txtAssignment, txtDepartment, txtTerm, txtViolation };
             Control[] dates = { txtCaseDate, txtStep1Date, txtStep2Date, txtStep3Date, txtChairDate, txtDeanDate };
             Control[] emails = { txtStudentEmail, txtMyTruEmail };
+
+            // these boxes go into database columns, so they cannot be longer than the column
+            Control[] limited = { txtStudentName, txtStudentNumber, txtStudentEmail, txtFacultyName,
+                                  txtDepartment, txtTerm, txtAssignment, txtChairName, txtDeanName };
+            int[] maxLengths = { 50, 10, 25, 50, 35, 30, 30, 50, 50 };
 
             foreach (Control box in required)
             {
@@ -428,22 +485,34 @@ namespace WinFormsApp1
                     return Complain(box, "is required.");
                 }
             }
+
+            for (int i = 0; i < limited.Length; i++)
+            {
+                if (limited[i].Text.Trim().Length > maxLengths[i])
+                {
+                    return Complain(limited[i], "is too long (at most " + maxLengths[i] + " characters).");
+                }
+            }
+
             foreach (Control box in dates)
             {
-                DateTime when;
-                if (box.Text.Trim() != "" && !DateTime.TryParseExact(box.Text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out when))
+                DateTime date;
+                bool isDate = DateTime.TryParseExact(box.Text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+                if (box.Text.Trim() != "" && isDate == false)
                 {
                     return Complain(box, "must be a real date written as yyyy-mm-dd.");
                 }
             }
+
             foreach (Control box in emails)
             {
                 string mail = box.Text.Trim();
-                if (mail != "" && (!mail.Contains("@") || !mail.Contains(".") || mail.Contains(" ")))
+                if (mail != "" && (mail.Contains("@") == false || mail.Contains(".") == false || mail.Contains(" ")))
                 {
                     return Complain(box, "is not a valid email address.");
                 }
             }
+
             if (rdoChairNo.Checked && txtChairExplain.Text.Trim() == "")
             {
                 return Complain(txtChairExplain, "is required when the Chair answers 'No'.");
@@ -455,7 +524,7 @@ namespace WinFormsApp1
             return true;
         }
 
-        // Show a warning and move to the bad field
+        // Show a warning and move to the bad field. Always returns false.
         private bool Complain(Control box, string problem)
         {
             string name = box.Name;
