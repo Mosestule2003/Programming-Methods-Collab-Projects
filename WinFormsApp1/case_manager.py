@@ -1,4 +1,4 @@
-# COMP 2210 Project Part 2 - Case Report Form (ED 5-0)
+# COMP 2210 Project Part 2: Case Report Form (ED 5-0)
 # Each record is saved as one line in a text file, values separated by "|"
 
 import os
@@ -12,14 +12,14 @@ FIELDS = [
     "Department", "Term or Semester", "OSA use only", "Description of Violation",
     "Student advised they may bring a support person (Yes/No)",
     "Student advised they may submit a written statement (Yes/No)",
-    "Step 1 - Faculty Signature", "Step 1 - Faculty Name", "Step 1 - Signature Date",
-    "Step 2 - Student Name", "Student reviewed the form and evidence (Yes/No)",
-    "Student MyTRU Email", "Step 2 - Student Signature", "Step 2 - Date",
-    "Step 3 - Faculty Signature", "Step 3 - Faculty Name", "Step 3 - Date",
-    "Step 4 - Chair agrees with the case (Yes/No)", "Step 4 - Chair explanation if No",
-    "Step 4 - Chair Comments", "Step 4 - Chair Signature", "Step 4 - Chair Name", "Step 4 - Date",
-    "Step 5 - Dean agrees with the case (Yes/No)", "Step 5 - Dean explanation if No",
-    "Step 5 - Dean Comments", "Step 5 - Dean Signature", "Step 5 - Dean Name", "Step 5 - Date",
+    "Step 1: Faculty Signature", "Step 1: Faculty Name", "Step 1: Signature Date",
+    "Step 2: Student Name", "Student reviewed the form and evidence (Yes/No)",
+    "Student MyTRU Email", "Step 2: Student Signature", "Step 2: Date",
+    "Step 3: Faculty Signature", "Step 3: Faculty Name", "Step 3: Date",
+    "Step 4: Chair agrees with the case (Yes/No)", "Step 4: Chair explanation if No",
+    "Step 4: Chair Comments", "Step 4: Chair Signature", "Step 4: Chair Name", "Step 4: Date",
+    "Step 5: Dean agrees with the case (Yes/No)", "Step 5: Dean explanation if No",
+    "Step 5: Dean Comments", "Step 5: Dean Signature", "Step 5: Dean Name", "Step 5: Date",
     "Faculty Member Comments (Page 4)", "Student Comments (Page 5)",
 ]
 
@@ -32,20 +32,18 @@ def read_records():
     records = []
     if os.path.exists(FILE_NAME) == False:
         return records
-    file = open(FILE_NAME, "r", encoding="utf-8")
-    for line in file:
-        if line.strip() != "":
-            records.append(line.strip())
-    file.close()
+    with open(FILE_NAME, "r", encoding="utf-8") as file:
+        for line in file:
+            if line.strip() != "":
+                records.append(line.strip())
     return records
 
 
 # Replace the whole file with the given list of records
 def write_records(records):
-    file = open(FILE_NAME, "w", encoding="utf-8")
-    for line in records:
-        file.write(line + "\n")
-    file.close()
+    with open(FILE_NAME, "w", encoding="utf-8") as file:
+        for line in records:
+            file.write(line + "\n")
 
 
 # New id = biggest number in the file + 1, for example CR-3
@@ -118,9 +116,8 @@ def show_list(records):
 def add_record():
     new_id = make_new_id(read_records())
     line = ask_all_fields([""] * len(FIELDS))
-    file = open(FILE_NAME, "a", encoding="utf-8")
-    file.write(new_id + "|" + line + "\n")
-    file.close()
+    with open(FILE_NAME, "a", encoding="utf-8") as file:
+        file.write(new_id + "|" + line + "\n")
     print("Saved as " + new_id)
 
 

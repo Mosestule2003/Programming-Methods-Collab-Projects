@@ -1,24 +1,24 @@
+# Connects the C# form to case_manager.py (the Python code that saves the records).
 
 import sys
 import case_manager
 
 
-# Print the error message for C# to show, then stop
+# send the error to C# and stop
 def fail(message):
     print(message, file=sys.stderr)
     sys.exit(1)
 
 
-# Save the values as one new line (same as add_record in case_manager.py)
+# like add_record in case_manager.py
 def add(values):
     new_id = case_manager.make_new_id(case_manager.read_records())
-    file = open(case_manager.FILE_NAME, "a", encoding="utf-8")
-    file.write(new_id + "|" + values + "\n")
-    file.close()
+    with open(case_manager.FILE_NAME, "a", encoding="utf-8") as file:
+        file.write(new_id + "|" + values + "\n")
     print(new_id)
 
 
-# Replace one record (same as modify_record in case_manager.py)
+# like modify_record in case_manager.py
 def update(record_id, values):
     records = case_manager.read_records()
     i = case_manager.find_record(records, record_id)
@@ -30,7 +30,7 @@ def update(record_id, values):
     print(old_id)
 
 
-# Delete one record (same as delete_record in case_manager.py)
+# like delete_record in case_manager.py
 def delete(record_id):
     records = case_manager.read_records()
     i = case_manager.find_record(records, record_id)
@@ -42,7 +42,7 @@ def delete(record_id):
     print(old_id)
 
 
-# Print the records that contain the text in the chosen column (same as search_records in case_manager.py)
+# like search_records in case_manager.py
 def search(choice, text):
     columns = {"0": [0, 1, 2, 4], "1": [0], "2": [1], "3": [2], "4": [4]}
     if choice not in columns:
@@ -56,7 +56,7 @@ def search(choice, text):
 
 
 def main():
-    # use UTF-8 so letters like é work
+    # UTF-8 so accents work
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -75,10 +75,10 @@ def main():
         update(args[1], sys.stdin.read().strip())
     elif command == "delete" and len(args) == 2:
         delete(args[1])
-    elif command == "search" and len(args) == 3:
-        search(args[1], args[2])
+    elif command == "search" and len(args) == 2:
+        search(args[1], sys.stdin.read())
     else:
-        fail("Unknown command. Use: list, add, update <id>, delete <id>, search <0-4> <text>")
+        fail("Unknown command. Use: list, add, update <id>, delete <id>, search <0-4>")
 
 
 main()

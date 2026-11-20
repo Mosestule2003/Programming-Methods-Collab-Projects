@@ -1,15 +1,24 @@
-# Case Report Form Manager - COMP 2210 Project (Part 1)
+# Case Report Form Manager: COMP 2210 Project
 
-A Python console program for the TRU Academic Integrity Case Report Form (ED 5-0).
+## Team (Group 9)
+
+- Tertsegha Kpughur-Tule, T00721068, kpughurtulet22@mytru.ca
+- Sumaiya Shova, T00742702, shovas23@mytru.ca
+
+COMP 2210, Programming Methods, Thompson Rivers University
+
+
+TRU Academic Integrity Case Report Form (ED 5-0).
 It takes the input of every editable field in the PDF form, saves each record as one
 line in a text file, and lets you search, display, modify and delete records.
 
 ## Project phases
 
-- **Phase 1 (this submission):** `case_report_manager.py`, a Python console program.
-- **Phase 2:** a C# Windows Forms version of the same form. It was built at the same
-  time as Phase 1, so it is being kept separate and will be reconciled with this
-  code later.
+- **Phase 1:** `case_report_manager.py`, a Python console program (in the main folder).
+- **Phase 2:** the `WinFormsApp1` folder, a C# Windows Forms version of the same form.
+  The form looks like the PDF, the Python code (`case_manager.py` through `case_bridge.py`)
+  saves each record in a text file, and `Database.cs` copies each record into a MySQL
+  database called `ed5`.
 
 ## Features
 
@@ -85,6 +94,33 @@ To start again with a clean file:
 del case_reports.txt
 ```
 
+## Phase 2: C# Windows Forms app (WinFormsApp1)
+
+### How it works
+
+1. The form (`Form1.cs`) collects the 38 fields and checks them (required fields, dates, emails, lengths).
+2. `Form1.cs` runs `case_bridge.py` with `py`. The bridge uses `case_manager.py` to add, update, delete,
+   list and search the records in `case_reports.txt` (next to the program).
+3. `Database.cs` then copies the record into MySQL: `users`, `ed_case_info` and `ed_case_comments`.
+   If MySQL is not running, the text file is still saved and the form shows a warning.
+
+### Setup
+
+1. Install Python 3 (the `py` command must work) and Visual Studio with the .NET desktop workload.
+2. Install XAMPP and start **MySQL** in the XAMPP Control Panel (user `root`, empty password).
+3. Create the database: open http://localhost/phpmyadmin/, click **SQL**, paste the contents of
+   `ed5_setup.sql` and click **Go**.
+   The same tables are also in the `database tables` folder as three separate files
+   (`01_users.sql`, `02_ed_case_info.sql`, `03_ed_case_comments.sql`, run in that order), with screenshots of the tables.
+4. Open `WinFormsApp1.slnx` in Visual Studio and press **Ctrl+F5** (Start Without Debugging).
+
+### Testing the app
+
+1. Fill in the starred fields and click **Save New Record**. A message says it was saved to the text file and the database.
+2. Check phpMyAdmin: the new rows are in `users`, `ed_case_info` and `ed_case_comments`.
+3. Use **Find records** to search, select a row and click **Modify Selected** (or double-click it), change a field and click **Update Record**.
+4. Select a row and click **Delete Selected**. The record disappears from the text file and the database.
+
 ## Data format
 
 One record per line, values separated by `|`:
@@ -92,13 +128,3 @@ One record per line, values separated by `|`:
 ```
 CR-1|Student Name|Student Number|Student Email|Faculty Member Name|...
 ```
-
-A `|` typed by the user is saved as `/` so each record always stays on one line.
-
-## Team
-
-- [Kpughur-Tule Tertsegha Moses]
-- [Sumaiya Shova]
-- [Name 3]
-
-COMP 2210 - Programming Methods, Thompson Rivers University
